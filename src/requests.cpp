@@ -13,6 +13,7 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 // commands definitions
 
 int imap_list_all(imap_handler handler, void *pointer);
+int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer);
 
 // handlers implementation
 
@@ -33,7 +34,25 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 
 int imap_list_all(imap_handler handler, void* pointer)
 {
-	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"\" \"*\"");
+	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"/\" \"*\"");
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"/\" \"%\"");
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler_string_vector);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	return _make_request();
+}
+
+int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer)
+{
+	if (dir[dir.length()-1] != '/')
+		dir += '/';
+
+	std::string command = "LIST \"" + dir + "\" \"%\"";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 
 	if (handler)
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler_string_vector);
