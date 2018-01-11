@@ -39,6 +39,7 @@ int _make_request()
 
 		// Always cleanup
 		curl_easy_cleanup(curl);
+		curl = curl_easy_init();
 	}
 
 	return (int)res;
