@@ -48,9 +48,29 @@ std::string get_path_from_list(std::string line)
 	return res;
 }
 
+int get_uidcount_from_select(std::vector<std::string> &v)
+{
+	for (auto e : v)
+	{
+		size_t found = e.find("EXISTS", 0);
+		if (found != std::string::npos)
+		{
+			std::string buff = "";
+			for (size_t i = 2; i < e.length(); ++i)
+			{
+				if (e[i] == ' ')
+					return std::stoi(buff);
+
+				buff += e[i];
+			}
+		}
+	}
+	return -1;
+}
+
 int do_getattr( const char *path, struct stat *st )
 {
-	LOG("do_getattr(): "+std::string(path));
+	TRACE("do_getattr(): "+std::string(path));
 
 	// GNU's definitions of the attributes (http://www.gnu.org/software/libc/manual/html_node/Attribute-Meanings.html):
 	// 		st_uid: 	The user ID of the file’s owner.
@@ -68,40 +88,63 @@ int do_getattr( const char *path, struct stat *st )
 	st->st_mtime = time( NULL ); // The last "m"odification of the file/directory is right now
 
 
-	// check if is on list
-	// for now, are filesystem deals with directories only,
-	// so not being at dir list means not existing
+	// get a list of directories
 	std::vector<std::string> v;
 	v.push_back("/");
 	imap_list_all(handler_string_vector, &v);
-	bool matched = false;
+
+	// check if is on list
+	// if so, it is a directory
 	for(auto e : v)
 	{
 		if (get_path_from_list(e) == std::string(path))
 		{
-			matched = true;
+			// describe entity as a directory
+			st->st_mode = S_IFDIR | 0777;
+			st->st_nlink = 0;
+			return 0;
+		}
+	}
+
+	// perhaps we're given a mail
+	// if so, get its directory and check uidcount
+	// firstly - trim out string
+	size_t index = std::string(path).rfind("/");
+	if (index == std::string::npos)
+		return -ENOENT;
+
+	std::string uid = std::string(path).substr(index+1);
+	std::string dir = std::string(path).erase(index);
+
+	// check for dir on list
+	for(auto e : v)
+	{
+		if (get_path_from_list(e) == dir)
+		{
+			// get uidcount of dir
+			std::vector< std::string > v;
+			imap_select(dir, handler_string_vector, &v);
+			int uidcount = get_uidcount_from_select(v);
+
+			if (std::stoi(uid) <= uidcount)
+			{
+				st->st_mode = S_IFREG | 0777;
+				st->st_nlink = 0;
+				return 0;
+			}
+
 			break;
 		}
 	}
-	if (!matched)
-	{
-		ERROR("directory " + std::string(path) + " doesn't exist");
-		return -ENOENT;
-	}
 
-
-	// for now only structures are directories with no
-	// symlinks and 0766 permissions
-	st->st_mode = S_IFDIR | 0777;
-	st->st_nlink = 0;
-
-	return 0;
+	// no match - error
+	return -ENOENT;
 }
 
 int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler,
 						off_t offset, struct fuse_file_info *fi)
 {
-	LOG("do_readdir(): "+std::string(path));
+	TRACE("do_readdir(): "+std::string(path));
 	filler( buffer, ".", NULL, 0 );
 	filler( buffer, "..", NULL, 0 );
 
@@ -114,22 +157,31 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler,
 			const char* p = split_path(get_path_from_list(path)).back().c_str();
 			filler( buffer, p, NULL, 0 );
 		}
-		//filler( buffer, "file349", NULL, 0 );
+
+		v.clear();
+		imap_select(std::string(path), handler_string_vector, &v);
+		int uidcount = get_uidcount_from_select(v);
+		for(int i = 1; i <= uidcount; ++i)
+			filler( buffer, std::to_string(i).c_str(), NULL, 0 );
 	}
 	return 0;
 }
 
 int do_mkdir(const char *path, mode_t mode)
 {
-	LOG("do_mkdir(): " + std::string(path));
-	imap_mkdir(std::string(path));
+	TRACE("do_mkdir(): " + std::string(path));
+	int status = imap_mkdir(std::string(path));
+	if (status != 0)
+		return -EIO;
 	return 0;
 }
 
 int do_rmdir(const char *path)
 {
-	LOG("do_rmdir(): " + std::string(path));
-	imap_rmdir(std::string(path));
+	TRACE("do_rmdir(): " + std::string(path));
+	int status = imap_rmdir(std::string(path));
+	if (status != 0)
+		return -EIO;
 	return 0;
 }
 
@@ -147,9 +199,21 @@ int run_fuse(int argc, char* argv[])
 int main(int argc, char* argv[])
 {
 	init_curl(argv[1], argv[2]);
+	//CURL* curl = open_curl();
+	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "SELECT INBOX");
+	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "STATUS INBOX (messages)");
 	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"/\" \"*\"");
-	//_make_request();
-	debug_init(V_LOG);
+	//_make_request(curl);
+	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "FETCH 2 ALL");
+	//_make_request(curl);
+	//std::vector< std::string > v;
+	//imap_select("INBOX");//, handler_string_vector, &v);
+	//close_curl(curl);
+	//std::cout << get_uidcount_from_select(v) << std::endl;
+	//for(auto e : v)
+	//	std::cout << e << std::endl;
+
+	debug_init(V_TRACE);
 	run_fuse(argc-2, argv+2);
 
 	return 0;

@@ -35,6 +35,9 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 int imap_select(std::string path, imap_handler handler, void* pointer)
 {
 	CURL *curl = open_curl();
+	if (path[0] == '/')
+		path.erase(0, 1);
+
 	std::string command = "SELECT \"" + path + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 
