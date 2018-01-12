@@ -32,8 +32,26 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 
 // commands implemenatation
 
+int imap_select(std::string path, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	std::string command = "SELECT \"" + path + "\"";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
+}
+
 int imap_list_all(imap_handler handler, void* pointer)
 {
+	CURL *curl = open_curl();
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"/\" \"*\"");
 
 	if (handler)
@@ -42,15 +60,18 @@ int imap_list_all(imap_handler handler, void* pointer)
 	if (pointer)
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
 
-	return _make_request();
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
 }
 
 int imap_rmdir(std::string path, imap_handler handler, void* pointer)
 {
+	CURL *curl = open_curl();
 	if (path[0] == '/')
 		path.erase(0, 1);
 
-	std::string command = "DELETE " + path;
+	std::string command = "DELETE \"" + path + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 
 	if (handler)
@@ -59,15 +80,18 @@ int imap_rmdir(std::string path, imap_handler handler, void* pointer)
 	if (pointer)
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
 
-	return _make_request();
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
 }
 
 int imap_mkdir(std::string path, imap_handler handler, void* pointer)
 {
+	CURL *curl = open_curl();
 	if (path[0] == '/')
 		path.erase(0, 1);
 
-	std::string command = "CREATE " + path;
+	std::string command = "CREATE \"" + path + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 
 	if (handler)
@@ -76,11 +100,14 @@ int imap_mkdir(std::string path, imap_handler handler, void* pointer)
 	if (pointer)
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
 
-	return _make_request();
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
 }
 
 int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer)
 {
+	CURL *curl = open_curl();
 	if (dir[dir.length()-1] != '/')
 		dir += '/';
 
@@ -93,5 +120,7 @@ int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer)
 	if (pointer)
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
 
-	return _make_request();
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
 }

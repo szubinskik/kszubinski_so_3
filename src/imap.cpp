@@ -1,45 +1,46 @@
 #include "imap.h"
 
 char *login, *passwd;
-CURL *curl;
+struct curl_slist *host = NULL;
 
 void init_curl(char* login, char* passwd)
 {
-	curl = curl_easy_init();
 	::login = login;
 	::passwd = passwd;
+	host = curl_slist_append(NULL, "imap.gmail.com:993:173.194.220.108");
 	// TODO ?
 }
 
-int _make_request()
+CURL* open_curl()
+{
+	CURL* curl = curl_easy_init();
+
+	// Set username and password
+	curl_easy_setopt(curl, CURLOPT_USERNAME, login);
+	curl_easy_setopt(curl, CURLOPT_PASSWORD, passwd);
+
+	// Force DNS resolving - fix local problems
+	// TODO
+	curl_easy_setopt(curl, CURLOPT_RESOLVE, host);
+
+	// This is just the GMail server URL
+	curl_easy_setopt(curl, CURLOPT_URL, "imaps://imap.gmail.com:993/");
+	return curl;
+}
+
+void close_curl(CURL *curl)
+{
+	curl_easy_cleanup(curl);
+}
+
+int _make_request(CURL *curl)
 {
 	CURLcode res = CURLE_OK;
 
 	if (curl)
 	{
-		// Set username and password
-		curl_easy_setopt(curl, CURLOPT_USERNAME, login);
-		curl_easy_setopt(curl, CURLOPT_PASSWORD, passwd);
-
-		// Force DNS resolving - fix local problems
-		// TODO
-		struct curl_slist *host = NULL;
-		host = curl_slist_append(NULL, "imap.gmail.com:993:173.194.220.108");
-		curl_easy_setopt(curl, CURLOPT_RESOLVE, host);
-
-		// This is just the GMail server URL
-		curl_easy_setopt(curl, CURLOPT_URL, "imaps://imap.gmail.com:993/");
-
 		// Perform the fetch
 		res = curl_easy_perform(curl);
-
-		// Check for errors
-		if (res != CURLE_OK)
-			fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-
-		// Always cleanup
-		curl_easy_cleanup(curl);
-		curl = curl_easy_init();
 	}
 
 	return (int)res;
