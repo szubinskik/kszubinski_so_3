@@ -33,6 +33,29 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 // commands implemenatation
 
 
+int imap_rename_dir(std::string from, std::string to,imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if(to[0] == '/')
+		to.erase(0, 1);
+
+	if(from[0] == '/')
+		from.erase(0, 1);
+
+	std::string command = "RENAME " + from + " " + to;
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
+}
+
 // some problems due to CURL#536
 // need to use URL-base command, instead of custom request
 int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler, void* pointer)

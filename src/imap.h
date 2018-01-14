@@ -13,6 +13,7 @@ void init_curl(char* login, char* passwd);
 size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector);
 
 // commands definitions
+int imap_rename_dir(std::string from, std::string to,imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_select(std::string path, imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_list_all(imap_handler handler = nullptr, void *pointer = nullptr);
