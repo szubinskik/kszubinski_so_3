@@ -32,6 +32,33 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 
 // commands implemenatation
 
+
+// some problems due to CURL#536
+// need to use URL-base command, instead of custom request
+int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if(mailbox[0] == '/')
+		mailbox.erase(0, 1);
+
+	char *_enc_box = curl_easy_escape(curl, mailbox.c_str(), 0);
+	std::string enc_box = std::string(_enc_box);
+	delete _enc_box;
+
+	std::string command = "imaps://imap.gmail.com:993/" + enc_box + ";UID=" + std::to_string(uid);
+	curl_easy_setopt(curl, CURLOPT_URL, command.c_str());
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
+}
+
 int imap_select(std::string path, imap_handler handler, void* pointer)
 {
 	CURL *curl = open_curl();
