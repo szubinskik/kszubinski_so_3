@@ -32,6 +32,38 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 
 // commands implemenatation
 
+int imap_search_all(std::string path, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if (path[0] == '/')
+		path.erase(0, 1);
+
+	std::string command;
+	int status;
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	command = "SELECT \"" + path + "\"";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+	if (status != 0)
+	{
+		close_curl(curl);
+		return status;
+	}
+
+	command = "SEARCH ALL";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+
+	close_curl(curl);
+	return status;
+}
+
 int imap_move(std::string from, std::string to, int uid, imap_handler handler, void* pointer)
 {
 	CURL *curl = open_curl();
@@ -55,7 +87,10 @@ int imap_move(std::string from, std::string to, int uid, imap_handler handler, v
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 	status = _make_request(curl);
 	if (status != 0)
+	{
+		close_curl(curl);
 		return status;
+	}
 
 	command = "UID MOVE " + std::to_string(uid) + " " + to;
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
