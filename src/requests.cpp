@@ -32,6 +32,38 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 
 // commands implemenatation
 
+int imap_move(std::string from, std::string to, int uid, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if(to[0] == '/')
+		to.erase(0, 1);
+
+	if(from[0] == '/')
+		from.erase(0, 1);
+
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	std::string command;
+	int status;
+
+	command = "SELECT " + from;
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+	if (status != 0)
+		return status;
+
+	command = "UID MOVE " + std::to_string(uid) + " " + to;
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+
+	close_curl(curl);
+	return status;
+}
 
 int imap_rename_dir(std::string from, std::string to,imap_handler handler, void* pointer)
 {
