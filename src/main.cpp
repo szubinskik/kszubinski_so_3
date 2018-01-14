@@ -16,6 +16,42 @@
 #include "filetree.h"
 #include "debug.h"
 
+// parsers for imap commands
+
+std::vector<int> parse_search_all(std::vector<std::string> v)
+{
+	std::vector<int> res;
+	const std::string pattern = "* SEARCH";
+
+	for (auto e : v)
+	{
+		if (e.length() < pattern.length())
+			continue;
+
+		if (std::equal(pattern.begin(), pattern.end(), e.begin()))
+		{
+			e += ' ';
+			std::string buff = "";
+			for (size_t i = pattern.length()+1; i < e.length(); ++i)
+			{
+				if (e[i] == ' ')
+				{
+					try { res.push_back(std::stoi(buff)); } catch (const std::exception& e) {}
+					buff = "";
+				}
+				else
+					buff += e[i];
+			}
+
+			break;
+		}
+	}
+
+	return res;
+}
+
+// utility functions
+
 std::vector<std::string> split_path(std::string path)
 {
 	std::vector<std::string> res;
@@ -48,34 +84,6 @@ std::string get_path_from_list(std::string line)
 	return res;
 }
 
-int get_uidcount_from_select(std::vector<std::string> &v)
-{
-	for (auto e : v)
-	{
-		size_t found = e.find("EXISTS", 0);
-		if (found != std::string::npos)
-		{
-			std::string buff = "";
-			for (size_t i = 2; i < e.length(); ++i)
-			{
-				if (e[i] == ' ')
-					return std::stoi(buff);
-
-				buff += e[i];
-			}
-		}
-	}
-	return -1;
-}
-
-int get_uidcount(std::string dir)
-{
-	std::vector< std::string > v;
-	imap_select(dir, handler_string_vector, &v);
-
-	return get_uidcount_from_select(v);
-}
-
 std::vector<std::string> get_dirs()
 {
 	// get a list of directories
@@ -89,7 +97,8 @@ std::vector<std::string> get_dirs()
 	return v;
 }
 
-bool v_find(std::vector<std::string> v, std::string s)
+template<class T>
+bool v_find(std::vector<T> v, T s)
 {
 	for (auto e : v)
 		if (e == s) return true;
@@ -97,10 +106,18 @@ bool v_find(std::vector<std::string> v, std::string s)
 	return false;
 }
 
+std::vector<int> get_uids(std::string dir)
+{
+	std::vector<std::string> v;
+	imap_search_all(dir, handler_string_vector, &v);
+	return parse_search_all(v);
+}
+
+// FUSE handlers implementation
 
 int do_rename(const char* from, const char* to)
 {
-	ERROR("do_rename(): " + std::string(to));
+	ERROR("do_rename(): " + std::string(from) + " " + std::string(to));
 	auto v = get_dirs();
 
 	std::string s_from = std::string(from);
@@ -112,29 +129,26 @@ int do_rename(const char* from, const char* to)
 		return (status == 0)?0:-ENOENT;
 	}
 	else // "from" is an e-mail
+		 // for now, user cannot specify filename
 	{
-		size_t index = std::string(s_from).rfind("/");
-		if (index == std::string::npos)
+		size_t t_index = s_to.rfind("/");
+		if (t_index == std::string::npos)
 			return -ENOENT;
+		std::string t_dir = s_to.erase(t_index);
 
-		std::string uid = std::string(s_from).substr(index+1);
-		std::string dir = std::string(s_from).erase(index);
-
-		int i_uid;
-		try
-		{
-			i_uid = std::stoi(uid);
-		}
-		catch(const std::exception& e)
-		{
+		size_t f_index = s_from.rfind("/");
+		if (f_index == std::string::npos)
 			return -ENOENT;
-		}
+		std::string _uid = s_from.substr(f_index+1);
+		std::string f_dir = s_from.erase(f_index);
 
-		if (i_uid <= get_uidcount(dir))
-		{
-			int status = imap_move(s_from, s_to, i_uid);
-			return (status == 0)?0:-ENOENT;
-		}
+		int uid;
+		try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
+
+
+		ERROR(f_dir + " " + t_dir + " " +std::to_string(uid));
+		int status = imap_move(f_dir, t_dir, uid);
+		return (status == 0)?0:-ENOENT;
 	}
 
 	return -ENOENT;
@@ -163,15 +177,12 @@ int do_getattr( const char *path, struct stat *st )
 
 	// check if is on list
 	// if so, it is a directory
-	for(auto e : v)
+	if (v_find(v, std::string(path)))
 	{
-		if (e == std::string(path))
-		{
-			// describe entity as a directory
-			st->st_mode = S_IFDIR | 0777;
-			st->st_nlink = 0;
-			return 0;
-		}
+		// describe entity as a directory
+		st->st_mode = S_IFDIR | 0777;
+		st->st_nlink = 0;
+		return 0;
 	}
 
 	// perhaps we're given a mail
@@ -181,34 +192,24 @@ int do_getattr( const char *path, struct stat *st )
 	if (index == std::string::npos)
 		return -ENOENT;
 
-	std::string uid = std::string(path).substr(index+1);
 	std::string dir = std::string(path).erase(index);
+	std::string _uid = std::string(path).substr(index+1);
+
+	int uid;
+	try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
 
 	// check for dir on list
-	for(auto e : v)
+	if (v_find(v, dir))
 	{
-		if (e == dir)
+		auto uids = get_uids(dir);
+		for (auto u : uids)
 		{
-			// get uidcount of dir
-			int uidcount = get_uidcount(dir);
-			int i_uid;
-			try
-			{
-				i_uid = std::stoi(uid);
-			}
-			catch(const std::exception& e)
-			{
-				return -ENOENT;
-			}
-
-			if (i_uid <= uidcount)
+			if (uid == u)
 			{
 				st->st_mode = S_IFREG | 0777;
 				st->st_nlink = 0;
 				return 0;
 			}
-
-			break;
 		}
 	}
 
@@ -233,11 +234,9 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler,
 			filler( buffer, p, NULL, 0 );
 		}
 
-		v.clear();
-		imap_select(std::string(path), handler_string_vector, &v);
-		int uidcount = get_uidcount_from_select(v);
-		for(int i = 1; i <= uidcount; ++i)
-			filler( buffer, std::to_string(i).c_str(), NULL, 0 );
+		auto uids = get_uids(std::string(path));
+		for (auto u : uids)
+			filler( buffer, std::to_string(u).c_str(), NULL, 0 );
 	}
 	return 0;
 }
@@ -275,6 +274,8 @@ int run_fuse(int argc, char* argv[])
 int main(int argc, char* argv[])
 {
 	init_curl(argv[1], argv[2]);
+
+	//imap_search_all("INBOX");
 
 	debug_init(V_TRACE);
 	run_fuse(argc-2, argv+2);

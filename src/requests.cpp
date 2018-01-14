@@ -56,7 +56,7 @@ int imap_search_all(std::string path, imap_handler handler, void* pointer)
 		return status;
 	}
 
-	command = "SEARCH ALL";
+	command = "UID SEARCH ALL";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 	status = _make_request(curl);
 
