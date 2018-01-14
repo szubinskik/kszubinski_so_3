@@ -68,6 +68,78 @@ int get_uidcount_from_select(std::vector<std::string> &v)
 	return -1;
 }
 
+int get_uidcount(std::string dir)
+{
+	std::vector< std::string > v;
+	imap_select(dir, handler_string_vector, &v);
+
+	return get_uidcount_from_select(v);
+}
+
+std::vector<std::string> get_dirs()
+{
+	// get a list of directories
+	std::vector<std::string> v;
+	v.push_back("/");
+	imap_list_all(handler_string_vector, &v);
+
+	for(auto &e : v)
+		e = get_path_from_list(e);
+
+	return v;
+}
+
+bool v_find(std::vector<std::string> v, std::string s)
+{
+	for (auto e : v)
+		if (e == s) return true;
+
+	return false;
+}
+
+
+int do_rename(const char* from, const char* to)
+{
+	ERROR("do_rename(): " + std::string(to));
+	auto v = get_dirs();
+
+	std::string s_from = std::string(from);
+	std::string s_to = std::string(to);
+
+	if (v_find(v, s_from)) // if "from" is a dir
+	{
+		int status = imap_rename_dir(s_from, s_to);
+		return (status == 0)?0:-ENOENT;
+	}
+	else // "from" is an e-mail
+	{
+		size_t index = std::string(s_from).rfind("/");
+		if (index == std::string::npos)
+			return -ENOENT;
+
+		std::string uid = std::string(s_from).substr(index+1);
+		std::string dir = std::string(s_from).erase(index);
+
+		int i_uid;
+		try
+		{
+			i_uid = std::stoi(uid);
+		}
+		catch(const std::exception& e)
+		{
+			return -ENOENT;
+		}
+
+		if (i_uid <= get_uidcount(dir))
+		{
+			int status = imap_move(s_from, s_to, i_uid);
+			return (status == 0)?0:-ENOENT;
+		}
+	}
+
+	return -ENOENT;
+}
+
 int do_getattr( const char *path, struct stat *st )
 {
 	TRACE("do_getattr(): "+std::string(path));
@@ -87,17 +159,13 @@ int do_getattr( const char *path, struct stat *st )
 	st->st_atime = time( NULL ); // The last "a"ccess of the file/directory is right now
 	st->st_mtime = time( NULL ); // The last "m"odification of the file/directory is right now
 
-
-	// get a list of directories
-	std::vector<std::string> v;
-	v.push_back("/");
-	imap_list_all(handler_string_vector, &v);
+	auto v = get_dirs();
 
 	// check if is on list
 	// if so, it is a directory
 	for(auto e : v)
 	{
-		if (get_path_from_list(e) == std::string(path))
+		if (e == std::string(path))
 		{
 			// describe entity as a directory
 			st->st_mode = S_IFDIR | 0777;
@@ -119,14 +187,21 @@ int do_getattr( const char *path, struct stat *st )
 	// check for dir on list
 	for(auto e : v)
 	{
-		if (get_path_from_list(e) == dir)
+		if (e == dir)
 		{
 			// get uidcount of dir
-			std::vector< std::string > v;
-			imap_select(dir, handler_string_vector, &v);
-			int uidcount = get_uidcount_from_select(v);
+			int uidcount = get_uidcount(dir);
+			int i_uid;
+			try
+			{
+				i_uid = std::stoi(uid);
+			}
+			catch(const std::exception& e)
+			{
+				return -ENOENT;
+			}
 
-			if (std::stoi(uid) <= uidcount)
+			if (i_uid <= uidcount)
 			{
 				st->st_mode = S_IFREG | 0777;
 				st->st_nlink = 0;
@@ -193,25 +268,13 @@ int run_fuse(int argc, char* argv[])
 	operations.mkdir   = do_mkdir;
 	operations.readdir = do_readdir;
 	operations.rmdir   = do_rmdir;
+	operations.rename  = do_rename;
 	return fuse_main( argc, argv, &operations, NULL );
 }
 
 int main(int argc, char* argv[])
 {
 	init_curl(argv[1], argv[2]);
-	//CURL* curl = open_curl();
-	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "SELECT INBOX");
-	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "STATUS INBOX (messages)");
-	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"/\" \"*\"");
-	//_make_request(curl);
-	//curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "FETCH 2 ALL");
-	//_make_request(curl);
-	//std::vector< std::string > v;
-	//imap_select("INBOX");//, handler_string_vector, &v);
-	//close_curl(curl);
-	//std::cout << get_uidcount_from_select(v) << std::endl;
-	//for(auto e : v)
-	//	std::cout << e << std::endl;
 
 	debug_init(V_TRACE);
 	run_fuse(argc-2, argv+2);
