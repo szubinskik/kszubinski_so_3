@@ -11,8 +11,10 @@ void init_curl(char* login, char* passwd);
 
 // handlers definitions
 size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector);
+size_t handler_string(char *ptr, size_t size, size_t nmemb, void *result);
 
 // commands definitions
+int imap_uid_to_ms(std::string path, int uid, imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_search_all(std::string path, imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_move(std::string from, std::string to, int uid, imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_rename_dir(std::string from, std::string to,imap_handler handler = nullptr, void* pointer = nullptr);

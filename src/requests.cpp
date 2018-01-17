@@ -1,4 +1,5 @@
 #include "imap.h"
+#include "debug.h"
 
 #include <string>
 #include <vector>
@@ -19,12 +20,25 @@ int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer);
 
 size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 {
-	char *word = new char [256]; // TODO
+	char *word = new char [size*nmemb+1]; // TODO
 	memcpy(word, ptr, size*nmemb);
 	word[size*nmemb] = 0;
 
 	auto s_vector = static_cast< std::vector<std::string>* >(vector);
 	s_vector -> push_back( std::string(word) );
+
+	delete[] word;
+	return size*nmemb;
+}
+
+size_t handler_string(char *ptr, size_t size, size_t nmemb, void *result)
+{
+	char *word = new char [size*nmemb+1]; // TODO
+	memcpy(word, ptr, size*nmemb);
+	word[size*nmemb] = 0;
+
+	auto s_result = static_cast< std::string* >(result);
+	s_result->append(word);
 
 	delete[] word;
 	return size*nmemb;
@@ -123,6 +137,38 @@ int imap_rename_dir(std::string from, std::string to,imap_handler handler, void*
 	return status;
 }
 
+int imap_uid_to_ms(std::string path, int uid, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if(path[0] == '/')
+		path.erase(0, 1);
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	std::string command;
+	int status;
+
+	command = "SELECT " + path;
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+	if (status != 0)
+	{
+		close_curl(curl);
+		return status;
+	}
+
+	command = "SEARCH UID " + std::to_string(uid);
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+
+	close_curl(curl);
+	return status;
+}
+
 // some problems due to CURL#536
 // need to use URL-base command, instead of custom request
 int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler, void* pointer)
@@ -135,7 +181,7 @@ int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler,
 	std::string enc_box = std::string(_enc_box);
 	delete _enc_box;
 
-	std::string command = "imaps://imap.gmail.com:993/" + enc_box + ";UID=" + std::to_string(uid);
+	std::string command = "imaps://imap.gmail.com:993/" + enc_box + "/;UID=" + std::to_string(uid);
 	curl_easy_setopt(curl, CURLOPT_URL, command.c_str());
 
 	if (handler)
