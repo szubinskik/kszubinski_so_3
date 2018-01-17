@@ -11,10 +11,15 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <map>
 
 #include "imap.h"
 #include "filetree.h"
 #include "debug.h"
+
+// global variables
+
+std::map<std::string, std::string> path_to_content;
 
 // parsers for imap commands
 
@@ -115,9 +120,58 @@ std::vector<int> get_uids(std::string dir)
 
 // FUSE handlers implementation
 
+int do_open(const char* path, struct fuse_file_info* fi)
+{
+	TRACE("do_open(): " + std::string(path));
+	auto s_path = std::string(path);
+	if (path_to_content.find(s_path) != path_to_content.end())
+		return 0;
+
+	size_t index = std::string(path).rfind("/");
+	if (index == std::string::npos)
+		return -ENOENT;
+
+	std::string dir = std::string(path).erase(index);
+	std::string _uid = std::string(path).substr(index+1);
+
+	int uid;
+	try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
+
+	// convert UID to ms
+
+	std::vector<std::string> v;
+	imap_uid_to_ms(dir, uid, handler_string_vector, &v);
+
+	// TODO
+	int ms = parse_search_all(v).back();
+
+	std::string res = "";
+	imap_fetch_mail(dir, ms, handler_string, &res);
+
+	path_to_content[s_path] = res;
+	return 0;
+}
+
+int do_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_file_info* fi)
+{
+	auto s_path  = std::string(path);
+	TRACE("do_read(): " + s_path + " size: " + std::to_string(size) + " offset: " + std::to_string(offset));
+	auto content = path_to_content[s_path];
+	int len = content.length();
+
+	if (offset >= len)
+		return 0;
+
+	if (size > len - offset)
+		size = len - offset;
+
+	memcpy(buf, content.c_str() + offset, size);
+	return size;
+}
+
 int do_rename(const char* from, const char* to)
 {
-	ERROR("do_rename(): " + std::string(from) + " " + std::string(to));
+	TRACE("do_rename(): " + std::string(from) + " " + std::string(to));
 	auto v = get_dirs();
 
 	std::string s_from = std::string(from);
@@ -145,8 +199,6 @@ int do_rename(const char* from, const char* to)
 		int uid;
 		try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
 
-
-		ERROR(f_dir + " " + t_dir + " " +std::to_string(uid));
 		int status = imap_move(f_dir, t_dir, uid);
 		return (status == 0)?0:-ENOENT;
 	}
@@ -172,6 +224,7 @@ int do_getattr( const char *path, struct stat *st )
 	st->st_gid = getgid(); // The group of the file/directory is the same as the group of the user who mounted the filesystem
 	st->st_atime = time( NULL ); // The last "a"ccess of the file/directory is right now
 	st->st_mtime = time( NULL ); // The last "m"odification of the file/directory is right now
+	st->st_size = 4096*1024;
 
 	auto v = get_dirs();
 
@@ -268,6 +321,8 @@ int run_fuse(int argc, char* argv[])
 	operations.readdir = do_readdir;
 	operations.rmdir   = do_rmdir;
 	operations.rename  = do_rename;
+	operations.open    = do_open;
+	operations.read    = do_read;
 	return fuse_main( argc, argv, &operations, NULL );
 }
 
@@ -275,10 +330,9 @@ int main(int argc, char* argv[])
 {
 	init_curl(argv[1], argv[2]);
 
-	//imap_search_all("INBOX");
 
 	debug_init(V_TRACE);
 	run_fuse(argc-2, argv+2);
-
+	//imap_search_all("INBOX");
 	return 0;
 }
