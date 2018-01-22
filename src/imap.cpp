@@ -1,9 +1,9 @@
 #include "imap.h"
 
-char *login, *passwd;
+const char *login, *passwd;
 struct curl_slist *host = NULL;
 
-void init_curl(char* login, char* passwd)
+void init_curl(const char* login, const char* passwd)
 {
 	::login = login;
 	::passwd = passwd;

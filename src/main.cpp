@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <cassert>
 
 #include "imap.h"
 #include "filetree.h"
@@ -312,6 +313,8 @@ int do_rmdir(const char *path)
 	return 0;
 }
 
+
+// fuse handlers
 static struct fuse_operations operations;
 
 int run_fuse(int argc, char* argv[])
@@ -326,13 +329,65 @@ int run_fuse(int argc, char* argv[])
 	return fuse_main( argc, argv, &operations, NULL );
 }
 
+// args parsing
+static struct options {
+	const char *username;
+	const char *password;
+	int show_help;
+	VERBOSITY verbosity;
+} options;
+
+#define OPTION(t, p) \
+	{ t, offsetof(struct options, p), 1 }
+
+static const struct fuse_opt option_spec[] = {
+	OPTION("--username=%s", username),
+	OPTION("-u %s", username),
+	OPTION("--password=%s", password),
+	OPTION("-p %s", password),
+	OPTION("--verbosity=%d", verbosity),
+	OPTION("--help", show_help),
+	OPTION("-h", show_help),
+	FUSE_OPT_END
+};
+
+static void show_help()
+{
+	printf("usage:  mountpoint [options]\n\n");
+	printf("File-system specific options:\n"
+		   "    --username=<s>, -u <s>          imap server username\n"
+		   "    --password=<s>, -p <s>          imap server password\n"
+		   "    --verbosity=<0|1|2>             verbosity: ERROR, LOG, TRACE\n"
+		   "\n");
+}
+
+
+// main for initialisation and command handling
 int main(int argc, char* argv[])
 {
-	init_curl(argv[1], argv[2]);
+	options.password = strdup("");
+	options.username = strdup("");
+	options.verbosity = V_TRACE;
+	fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
+	if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
+		return 1;
 
-	debug_init(V_TRACE);
-	run_fuse(argc-2, argv+2);
-	//imap_search_all("INBOX");
+	if (strcmp(options.password, "") == 0 || strcmp(options.username, "") == 0)
+	{
+		std::cout << "Invalid username and/or password. See --help for more information." << std::endl;
+		return 1;
+	}
+
+	if (options.show_help)
+	{
+    	show_help();
+    	assert(fuse_opt_add_arg(&args, "--help") == 0);
+		args.argv[0] = (char*) "";
+	}
+
+	init_curl(options.username, options.password);
+	debug_init(options.verbosity);
+	run_fuse(args.argc, args.argv);
 	return 0;
 }

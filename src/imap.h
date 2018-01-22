@@ -7,7 +7,7 @@
 typedef size_t (*imap_handler)(char*, size_t, size_t, void*);
 
 // initializing libcurl
-void init_curl(char* login, char* passwd);
+void init_curl(const char* login, const char* passwd);
 
 // handlers definitions
 size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector);
