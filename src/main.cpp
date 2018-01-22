@@ -56,6 +56,35 @@ std::vector<int> parse_search_all(std::vector<std::string> v)
 	return res;
 }
 
+int parse_get_size(std::vector<std::string> v)
+{
+	int res = -1;
+	if (v.empty())
+		return res;
+
+	auto e = v.back();
+	int index = e.length();
+	for (size_t i = 6; i < e.length(); ++i)
+	{
+		if (e[i] == '{')
+		{
+			index = i+1;
+			break;
+		}
+	}
+
+	std::string temp = "";
+	for (; index < e.length(); ++index)
+	{
+		if (e[index] == '}')
+			break;
+		temp += e[index];
+	}
+
+	try { res = std::stoi(temp); } catch (const std::exception& e) {}
+	return res;
+}
+
 // utility functions
 
 std::vector<std::string> split_path(std::string path)
@@ -211,21 +240,10 @@ int do_getattr( const char *path, struct stat *st )
 {
 	TRACE("do_getattr(): "+std::string(path));
 
-	// GNU's definitions of the attributes (http://www.gnu.org/software/libc/manual/html_node/Attribute-Meanings.html):
-	// 		st_uid: 	The user ID of the file’s owner.
-	//		st_gid: 	The group ID of the file.
-	//		st_atime: 	This is the last access time for the file.
-	//		st_mtime: 	This is the time of the last modification to the contents of the file.
-	//		st_mode: 	Specifies the mode of the file. This includes file type information (see Testing File Type) and the file permission bits (see Permission Bits).
-	//		st_nlink: 	The number of hard links to the file. This count keeps track of how many directories have entries for this file. If the count is ever decremented to zero, then the file itself is discarded as soon 
-	//						as no process still holds it open. Symbolic links are not counted in the total.
-	//		st_size:	This specifies the size of a regular file in bytes. For files that are really devices this field isn’t usually meaningful. For symbolic links this specifies the length of the file name the link refers to.
-
 	st->st_uid = getuid(); // The owner of the file/directory is the user who mounted the filesystem
 	st->st_gid = getgid(); // The group of the file/directory is the same as the group of the user who mounted the filesystem
 	st->st_atime = time( NULL ); // The last "a"ccess of the file/directory is right now
 	st->st_mtime = time( NULL ); // The last "m"odification of the file/directory is right now
-	st->st_size = 4096*1024;
 
 	auto v = get_dirs();
 
@@ -260,6 +278,15 @@ int do_getattr( const char *path, struct stat *st )
 		{
 			if (uid == u)
 			{
+				std::vector<std::string> v;
+				imap_uid_to_ms(dir, uid, handler_string_vector, &v);
+				int ms = parse_search_all(v).back();
+
+				v.clear();
+				imap_fetch_size(dir, ms, handler_string_vector, &v);
+				int size = parse_get_size(v);
+				if (size > 0)
+					st->st_size = size;
 				st->st_mode = S_IFREG | 0777;
 				st->st_nlink = 0;
 				return 0;

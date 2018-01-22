@@ -181,7 +181,7 @@ int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler,
 	std::string enc_box = std::string(_enc_box);
 	delete _enc_box;
 
-	std::string command = "imaps://imap.gmail.com:993/" + enc_box + "/;UID=" + std::to_string(uid);
+	std::string command = "imaps://imap.gmail.com:993/" + enc_box + "/;UID=" + std::to_string(uid) + ";SECTION=TEXT";
 	curl_easy_setopt(curl, CURLOPT_URL, command.c_str());
 
 	if (handler)
@@ -191,6 +191,39 @@ int imap_fetch_mail(std::string mailbox, unsigned int uid, imap_handler handler,
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
 
 	int status = _make_request(curl);
+	close_curl(curl);
+	return status;
+}
+
+int imap_fetch_size(std::string mailbox, unsigned int uid, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if(mailbox[0] == '/')
+		mailbox.erase(0, 1);
+
+	char *_enc_box = curl_easy_escape(curl, mailbox.c_str(), 0);
+	std::string enc_box = std::string(_enc_box);
+	delete _enc_box;
+
+	std::string command;
+	int status;
+
+	command = "SELECT \"" + mailbox + "\"";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	status = _make_request(curl);
+	if (status != 0)
+		return status;
+
+	command = "FETCH " + std::to_string(uid) + " BODY.PEEK[TEXT]";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
 	close_curl(curl);
 	return status;
 }
