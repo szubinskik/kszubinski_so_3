@@ -400,17 +400,19 @@ int main(int argc, char* argv[])
 	if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
 		return 1;
 
+	if (options.show_help)
+	{
+		show_help();
+		assert(fuse_opt_add_arg(&args, "--help") == 0);
+		args.argv[0] = (char*) "";
+		run_fuse(args.argc, args.argv);
+		return 0;
+	}
+
 	if (strcmp(options.password, "") == 0 || strcmp(options.username, "") == 0)
 	{
 		std::cout << "Invalid username and/or password. See --help for more information." << std::endl;
 		return 1;
-	}
-
-	if (options.show_help)
-	{
-    	show_help();
-    	assert(fuse_opt_add_arg(&args, "--help") == 0);
-		args.argv[0] = (char*) "";
 	}
 
 	init_curl(options.username, options.password);
