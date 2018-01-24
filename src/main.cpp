@@ -13,16 +13,98 @@
 #include <string>
 #include <map>
 #include <cassert>
+#include <utility>
 
 #include "imap.h"
-#include "filetree.h"
 #include "debug.h"
+
+typedef std::pair<std::string, std::string> File;
+
+// utility functions
+File get_file(std::string path);
+File get_file(char *path);
+bool is_file(File file);
+
+// imap requests
+std::string get_path_from_list(std::string line);
+std::vector<std::string> get_dirs();
+std::vector<int> get_uids(std::string dir);
+
+// parsers for imap commands
+std::vector<int> parse_search_all(std::vector<std::string> v);
+int parse_get_size(std::vector<std::string> v);
+
 
 // global variables
 
 std::map<std::string, std::string> path_to_content;
 
-// parsers for imap commands
+// split path to dir and file
+File get_file(std::string path)
+{
+	size_t index = std::string(path).rfind("/");
+	if (index == std::string::npos)
+		return { "\\", "\\" };
+
+	std::string dir = std::string(path).erase(index);
+	std::string file = std::string(path).substr(index+1);
+
+	return {dir, file};
+}
+
+File get_file(char *path)
+{
+	return get_file(std::string(path));
+}
+
+bool is_file(File file)
+{
+	return !(file.first == "\\" && file.second == "\\");
+}
+
+// search vector for an element
+template<class T>
+bool v_find(std::vector<T> v, T s)
+{
+	for (auto e : v)
+		if (e == s) return true;
+
+	return false;
+}
+
+// get the list of directories
+std::string get_path_from_list(std::string line)
+{
+	std::string res = "/";
+	size_t i = 0;
+	while (i < line.length() && line[i] != '"')
+		i++;
+	i += 5;
+	while (i < line.length() && line[i] != '"')
+		res += line[i++];
+	return res;
+}
+
+std::vector<std::string> get_dirs()
+{
+	// get a list of directories
+	std::vector<std::string> v;
+	v.push_back("/");
+	imap_list_all(handler_string_vector, &v);
+
+	for(auto &e : v)
+		e = get_path_from_list(e);
+
+	return v;
+}
+
+// get all uids in directory
+std::vector<int> get_uids(std::string dir)
+{
+	std::vector<std::string> v;
+	imap_search_all(dir, handler_string_vector, &v);
+	return parse_search_all(v);
+}
 
 std::vector<int> parse_search_all(std::vector<std::string> v)
 {
@@ -63,7 +145,7 @@ int parse_get_size(std::vector<std::string> v)
 		return res;
 
 	auto e = v.back();
-	int index = e.length();
+	size_t index = e.length();
 	for (size_t i = 6; i < e.length(); ++i)
 	{
 		if (e[i] == '{')
@@ -85,98 +167,29 @@ int parse_get_size(std::vector<std::string> v)
 	return res;
 }
 
-// utility functions
-
-std::vector<std::string> split_path(std::string path)
-{
-	std::vector<std::string> res;
-	size_t i = 0;
-	while (i < path.length())
-	{
-		std::string temp = "";
-		while (i < path.length())
-		{
-			if (path[i] == '/')
-				break;
-
-			temp += path[i++];
-		}
-		res.push_back(temp);
-		i++;
-	}
-	return res;
-}
-
-std::string get_path_from_list(std::string line)
-{
-	std::string res = "/";
-	size_t i = 0;
-	while (i < line.length() && line[i] != '"')
-		i++;
-	i += 5;
-	while (i < line.length() && line[i] != '"')
-		res += line[i++];
-	return res;
-}
-
-std::vector<std::string> get_dirs()
-{
-	// get a list of directories
-	std::vector<std::string> v;
-	v.push_back("/");
-	imap_list_all(handler_string_vector, &v);
-
-	for(auto &e : v)
-		e = get_path_from_list(e);
-
-	return v;
-}
-
-template<class T>
-bool v_find(std::vector<T> v, T s)
-{
-	for (auto e : v)
-		if (e == s) return true;
-
-	return false;
-}
-
-std::vector<int> get_uids(std::string dir)
-{
-	std::vector<std::string> v;
-	imap_search_all(dir, handler_string_vector, &v);
-	return parse_search_all(v);
-}
-
 // FUSE handlers implementation
 
 int do_open(const char* path, struct fuse_file_info* fi)
 {
-	TRACE("do_open(): " + std::string(path));
 	auto s_path = std::string(path);
-	if (path_to_content.find(s_path) != path_to_content.end())
-		return 0;
+	TRACE("do_open(): " + s_path);
 
-	size_t index = std::string(path).rfind("/");
-	if (index == std::string::npos)
+	File f = get_file(s_path);
+	if (!is_file(f))
 		return -ENOENT;
 
-	std::string dir = std::string(path).erase(index);
-	std::string _uid = std::string(path).substr(index+1);
-
 	int uid;
-	try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
+	try { uid = std::stoi(f.second); } catch (const std::exception& e) { return -ENOENT; }
 
 	// convert UID to ms
-
 	std::vector<std::string> v;
-	imap_uid_to_ms(dir, uid, handler_string_vector, &v);
+	imap_uid_to_ms(f.first, uid, handler_string_vector, &v);
 
 	// TODO
 	int ms = parse_search_all(v).back();
 
 	std::string res = "";
-	imap_fetch_mail(dir, ms, handler_string, &res);
+	imap_fetch_mail(f.first, ms, handler_string, &res);
 
 	path_to_content[s_path] = res;
 	return 0;
@@ -187,7 +200,7 @@ int do_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_
 	auto s_path  = std::string(path);
 	TRACE("do_read(): " + s_path + " size: " + std::to_string(size) + " offset: " + std::to_string(offset));
 	auto content = path_to_content[s_path];
-	int len = content.length();
+	size_t len = content.length();
 
 	if (offset >= len)
 		return 0;
@@ -196,7 +209,7 @@ int do_read(const char* path, char *buf, size_t size, off_t offset, struct fuse_
 		size = len - offset;
 
 	memcpy(buf, content.c_str() + offset, size);
-	return size;
+	return static_cast<int>(size);
 }
 
 int do_rename(const char* from, const char* to)
@@ -215,21 +228,18 @@ int do_rename(const char* from, const char* to)
 	else // "from" is an e-mail
 		 // for now, user cannot specify filename
 	{
-		size_t t_index = s_to.rfind("/");
-		if (t_index == std::string::npos)
+		File to_file = get_file(s_to);
+		if (!is_file(to_file))
 			return -ENOENT;
-		std::string t_dir = s_to.erase(t_index);
 
-		size_t f_index = s_from.rfind("/");
-		if (f_index == std::string::npos)
+		File from_file = get_file(s_from);
+		if (!is_file(from_file))
 			return -ENOENT;
-		std::string _uid = s_from.substr(f_index+1);
-		std::string f_dir = s_from.erase(f_index);
 
 		int uid;
-		try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
+		try { uid = std::stoi(from_file.second); } catch (const std::exception& e) { return -ENOENT; }
 
-		int status = imap_move(f_dir, t_dir, uid);
+		int status = imap_move(from_file.first, to_file.first, uid);
 		return (status == 0)?0:-ENOENT;
 	}
 
@@ -260,30 +270,27 @@ int do_getattr( const char *path, struct stat *st )
 	// perhaps we're given a mail
 	// if so, get its directory and check uidcount
 	// firstly - trim out string
-	size_t index = std::string(path).rfind("/");
-	if (index == std::string::npos)
+	File f = get_file(path);
+	if (!is_file(f))
 		return -ENOENT;
 
-	std::string dir = std::string(path).erase(index);
-	std::string _uid = std::string(path).substr(index+1);
-
 	int uid;
-	try { uid = std::stoi(_uid); } catch (const std::exception& e) { return -ENOENT; }
+	try { uid = std::stoi(f.second); } catch (const std::exception& e) { return -ENOENT; }
 
 	// check for dir on list
-	if (v_find(v, dir))
+	if (v_find(v, f.first))
 	{
-		auto uids = get_uids(dir);
+		auto uids = get_uids(f.first);
 		for (auto u : uids)
 		{
 			if (uid == u)
 			{
 				std::vector<std::string> v;
-				imap_uid_to_ms(dir, uid, handler_string_vector, &v);
+				imap_uid_to_ms(f.first, uid, handler_string_vector, &v);
 				int ms = parse_search_all(v).back();
 
 				v.clear();
-				imap_fetch_size(dir, ms, handler_string_vector, &v);
+				imap_fetch_size(f.first, ms, handler_string_vector, &v);
 				int size = parse_get_size(v);
 				if (size > 0)
 					st->st_size = size;
@@ -305,20 +312,18 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler,
 	filler( buffer, ".", NULL, 0 );
 	filler( buffer, "..", NULL, 0 );
 
-	if ( true )//strcmp( path, "/" ) == 0 )
+	std::vector<std::string> v;
+	imap_list_subdirs(std::string(path), handler_string_vector, &v);
+	for(auto path : v)
 	{
-		std::vector<std::string> v;
-		imap_list_subdirs(std::string(path), handler_string_vector, &v);
-		for(auto path : v)
-		{
-			const char* p = split_path(get_path_from_list(path)).back().c_str();
-			filler( buffer, p, NULL, 0 );
-		}
-
-		auto uids = get_uids(std::string(path));
-		for (auto u : uids)
-			filler( buffer, std::to_string(u).c_str(), NULL, 0 );
+		const char* p = get_file(get_path_from_list(path)).second.c_str();
+		filler( buffer, p, NULL, 0 );
 	}
+
+	auto uids = get_uids(std::string(path));
+	for (auto u : uids)
+		filler( buffer, std::to_string(u).c_str(), NULL, 0 );
+
 	return 0;
 }
 
@@ -360,6 +365,8 @@ int run_fuse(int argc, char* argv[])
 static struct options {
 	const char *username;
 	const char *password;
+	const char *server;
+	const char *resolve;
 	int show_help;
 	VERBOSITY verbosity;
 } options;
@@ -372,6 +379,10 @@ static const struct fuse_opt option_spec[] = {
 	OPTION("-u %s", username),
 	OPTION("--password=%s", password),
 	OPTION("-p %s", password),
+	OPTION("--server=%s", server),
+	OPTION("-a %s", server),
+	OPTION("--resolve %s", resolve),
+	OPTION("-r %s", resolve),
 	OPTION("--verbosity=%d", verbosity),
 	OPTION("--help", show_help),
 	OPTION("-h", show_help),
@@ -384,6 +395,9 @@ static void show_help()
 	printf("File-system specific options:\n"
 		   "    --username=<s>, -u <s>          imap server username\n"
 		   "    --password=<s>, -p <s>          imap server password\n"
+		   "    --server=<s>, -a <s>            address of imap server\n"
+		   "\n"
+		   "    --resolve=<s>, -r <s>           force resolve to selected address\n"
 		   "    --verbosity=<0|1|2>             verbosity: ERROR, LOG, TRACE\n"
 		   "\n");
 }
@@ -394,6 +408,8 @@ int main(int argc, char* argv[])
 {
 	options.password = strdup("");
 	options.username = strdup("");
+	options.server = strdup("");
+	options.resolve = strdup("");
 	options.verbosity = V_TRACE;
 	fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
@@ -415,7 +431,17 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	init_curl(options.username, options.password);
+	if (strcmp(options.server, "") == 0)
+	{
+		std::cout << "Invalid server address. See --help for more information." << std::endl;
+		return 1;
+	}
+
+	if (strcmp(options.resolve, "") == 0)
+		init_curl(options.username, options.password, options.server);
+	else
+		init_curl(options.username, options.password, options.server, options.resolve);
+
 	debug_init(options.verbosity);
 	run_fuse(args.argc, args.argv);
 	return 0;

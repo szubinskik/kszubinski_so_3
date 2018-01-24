@@ -1,20 +1,10 @@
 #include "imap.h"
-#include "debug.h"
 
 #include <string>
 #include <vector>
 #include <cstring>
 
 typedef size_t (*imap_handler)(char*, size_t, size_t, void*);
-
-// handlers definitions
-
-size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector); // pushes response lines to std::string vector at @vector
-
-// commands definitions
-
-int imap_list_all(imap_handler handler, void *pointer);
-int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer);
 
 // handlers implementation
 

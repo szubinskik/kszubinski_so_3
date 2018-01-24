@@ -1,4 +1,4 @@
-main: main.cpp imap.o requests.o filetree.o debug.o
+main: main.cpp imap.o requests.o debug.o
 	g++ main.cpp imap.o requests.o filetree.o debug.o -o ../bin/main `pkg-config libcurl fuse --cflags --libs` -std=c++11 -Wall -Wextra -Wconversion
 
 imap.o: imap.cpp imap.h
@@ -6,9 +6,6 @@ imap.o: imap.cpp imap.h
 
 requests.o: requests.cpp imap.h
 	g++ -c requests.cpp -lcurl -std=c++11 -Wall -Wextra -Wconversion
-
-filetree.o: filetree.cpp filetree.h
-	g++ -c filetree.cpp -std=c++11 -Wall -Wextra -Wconversion
 
 debug.o: debug.cpp debug.h
 	g++ -c debug.cpp -std=c++11 -Wall -Wextra -Wconversion

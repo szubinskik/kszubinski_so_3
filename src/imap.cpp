@@ -1,14 +1,16 @@
 #include "imap.h"
 
-const char *login, *passwd;
+const char *login, *passwd, *server;
 struct curl_slist *host = NULL;
 
-void init_curl(const char* login, const char* passwd)
+void init_curl(const char *login, const char *passwd, const char *server, const char *resolve)
 {
 	::login = login;
 	::passwd = passwd;
-	host = curl_slist_append(NULL, "imap.gmail.com:993:173.194.220.108");
-	// TODO ?
+	::server = server;
+
+	if (resolve != nullptr)
+		host = curl_slist_append(NULL, resolve);
 }
 
 CURL* open_curl()
@@ -23,8 +25,7 @@ CURL* open_curl()
 	// TODO
 	curl_easy_setopt(curl, CURLOPT_RESOLVE, host);
 
-	// This is just the GMail server URL
-	curl_easy_setopt(curl, CURLOPT_URL, "imaps://imap.gmail.com:993/");
+	curl_easy_setopt(curl, CURLOPT_URL, server);
 	return curl;
 }
 
