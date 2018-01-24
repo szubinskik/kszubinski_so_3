@@ -1,4 +1,5 @@
 #include "imap.h"
+#include "debug.h"
 
 #include <string>
 #include <vector>
@@ -10,7 +11,7 @@ typedef size_t (*imap_handler)(char*, size_t, size_t, void*);
 
 size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 {
-	char *word = new char [size*nmemb+1]; // TODO
+	char *word = new char [size*nmemb+1];
 	memcpy(word, ptr, size*nmemb);
 	word[size*nmemb] = 0;
 
@@ -23,7 +24,7 @@ size_t handler_string_vector(char *ptr, size_t size, size_t nmemb, void *vector)
 
 size_t handler_string(char *ptr, size_t size, size_t nmemb, void *result)
 {
-	char *word = new char [size*nmemb+1]; // TODO
+	char *word = new char [size*nmemb+1];
 	memcpy(word, ptr, size*nmemb);
 	word[size*nmemb] = 0;
 
@@ -87,7 +88,7 @@ int imap_move(std::string from, std::string to, int uid, imap_handler handler, v
 	std::string command;
 	int status;
 
-	command = "SELECT " + from;
+	command = "SELECT \"" + from + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 	status = _make_request(curl);
 	if (status != 0)
@@ -96,7 +97,7 @@ int imap_move(std::string from, std::string to, int uid, imap_handler handler, v
 		return status;
 	}
 
-	command = "UID MOVE " + std::to_string(uid) + " " + to;
+	command = "UID MOVE " + std::to_string(uid) + " \"" + to + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 	status = _make_request(curl);
 
@@ -113,7 +114,7 @@ int imap_rename_dir(std::string from, std::string to,imap_handler handler, void*
 	if(from[0] == '/')
 		from.erase(0, 1);
 
-	std::string command = "RENAME " + from + " " + to;
+	std::string command = "RENAME \"" + from + "\" \"" + to + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 
 	if (handler)
@@ -142,7 +143,7 @@ int imap_uid_to_ms(std::string path, int uid, imap_handler handler, void* pointe
 	std::string command;
 	int status;
 
-	command = "SELECT " + path;
+	command = "SELECT \"" + path + "\"";
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
 	status = _make_request(curl);
 	if (status != 0)
@@ -241,7 +242,7 @@ int imap_select(std::string path, imap_handler handler, void* pointer)
 int imap_list_all(imap_handler handler, void* pointer)
 {
 	CURL *curl = open_curl();
-	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"/\" \"*\"");
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "LIST \"\" \"*\"");
 
 	if (handler)
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
@@ -297,7 +298,9 @@ int imap_mkdir(std::string path, imap_handler handler, void* pointer)
 int imap_list_subdirs(std::string dir, imap_handler handler, void *pointer)
 {
 	CURL *curl = open_curl();
-	if (dir[dir.length()-1] != '/')
+	if (dir == "/")
+		dir = "";
+	else if (dir[dir.length()-1] != '/')
 		dir += '/';
 
 	std::string command = "LIST \"" + dir + "\" \"%\"";

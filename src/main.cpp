@@ -14,6 +14,7 @@
 #include <map>
 #include <cassert>
 #include <utility>
+#include <boost/algorithm/string.hpp>
 
 #include "imap.h"
 #include "debug.h"
@@ -44,7 +45,7 @@ File get_file(std::string path)
 {
 	size_t index = std::string(path).rfind("/");
 	if (index == std::string::npos)
-		return { "\\", "\\" };
+		return { "//", path };
 
 	std::string dir = std::string(path).erase(index);
 	std::string file = std::string(path).substr(index+1);
@@ -59,7 +60,7 @@ File get_file(char *path)
 
 bool is_file(File file)
 {
-	return !(file.first == "\\" && file.second == "\\");
+	return !(file.first == "\\");
 }
 
 // search vector for an element
@@ -76,25 +77,33 @@ bool v_find(std::vector<T> v, T s)
 std::string get_path_from_list(std::string line)
 {
 	std::string res = "/";
-	size_t i = 0;
-	while (i < line.length() && line[i] != '"')
-		i++;
-	i += 5;
-	while (i < line.length() && line[i] != '"')
-		res += line[i++];
-	return res;
+	size_t index = line.rfind("\"/\"");
+	if (index == std::string::npos)
+		return "";
+
+	line = line.substr(index+4);
+	line.erase(line.length()-1);
+	boost::trim_right(line);
+	if (line[0] == '"' && line[line.length()-1] == '"')
+	{
+		line.erase(line.length()-1);
+		line.erase(0, 1);
+	}
+	return '/'+line;
 }
 
 std::vector<std::string> get_dirs()
 {
 	// get a list of directories
 	std::vector<std::string> v;
-	v.push_back("/");
-	imap_list_all(handler_string_vector, &v);
+	int r = imap_list_all(handler_string_vector, &v);
+	if (r != 0)
+		ERROR("get_dirs() error: " + std::to_string(r));
 
 	for(auto &e : v)
 		e = get_path_from_list(e);
 
+	v.push_back("/");
 	return v;
 }
 
@@ -185,11 +194,21 @@ int do_open(const char* path, struct fuse_file_info* fi)
 	std::vector<std::string> v;
 	imap_uid_to_ms(f.first, uid, handler_string_vector, &v);
 
-	// TODO
-	int ms = parse_search_all(v).back();
+	auto s_all = parse_search_all(v);
+	if (s_all.empty())
+	{
+		return -EIO;
+	}
+	int ms = s_all.back();
 
 	std::string res = "";
-	imap_fetch_mail(f.first, ms, handler_string, &res);
+	path_to_content[s_path] = "";
+	int r = imap_fetch_mail(f.first, ms, handler_string, &res);
+	if (r != 0)
+	{
+		ERROR("do_open(): " + s_path + " error: " + std::to_string(r));
+		return -EIO;
+	}
 
 	path_to_content[s_path] = res;
 	return 0;
@@ -256,10 +275,11 @@ int do_getattr( const char *path, struct stat *st )
 	st->st_mtime = time( NULL ); // The last "m"odification of the file/directory is right now
 
 	auto v = get_dirs();
+	auto s_path = std::string(path);
 
 	// check if is on list
 	// if so, it is a directory
-	if (v_find(v, std::string(path)))
+	if (v_find(v, s_path))
 	{
 		// describe entity as a directory
 		st->st_mode = S_IFDIR | 0777;
@@ -277,27 +297,25 @@ int do_getattr( const char *path, struct stat *st )
 	int uid;
 	try { uid = std::stoi(f.second); } catch (const std::exception& e) { return -ENOENT; }
 
+
 	// check for dir on list
 	if (v_find(v, f.first))
 	{
 		auto uids = get_uids(f.first);
-		for (auto u : uids)
+		if (v_find(uids, uid))
 		{
-			if (uid == u)
-			{
-				std::vector<std::string> v;
-				imap_uid_to_ms(f.first, uid, handler_string_vector, &v);
-				int ms = parse_search_all(v).back();
+			std::vector<std::string> v;
+			imap_uid_to_ms(f.first, uid, handler_string_vector, &v);
+			int ms = parse_search_all(v).back();
 
-				v.clear();
-				imap_fetch_size(f.first, ms, handler_string_vector, &v);
-				int size = parse_get_size(v);
-				if (size > 0)
-					st->st_size = size;
-				st->st_mode = S_IFREG | 0777;
-				st->st_nlink = 0;
-				return 0;
-			}
+			v.clear();
+			imap_fetch_size(f.first, ms, handler_string_vector, &v);
+			int size = parse_get_size(v);
+			if (size > 0)
+				st->st_size = size;
+			st->st_mode = S_IFREG | 0777;
+			st->st_nlink = 0;
+			return 0;
 		}
 	}
 
@@ -314,6 +332,7 @@ int do_readdir(const char *path, void *buffer, fuse_fill_dir_t filler,
 
 	std::vector<std::string> v;
 	imap_list_subdirs(std::string(path), handler_string_vector, &v);
+
 	for(auto path : v)
 	{
 		const char* p = get_file(get_path_from_list(path)).second.c_str();
@@ -410,7 +429,7 @@ int main(int argc, char* argv[])
 	options.username = strdup("");
 	options.server = strdup("");
 	options.resolve = strdup("");
-	options.verbosity = V_TRACE;
+	options.verbosity = V_LOG;
 	fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
 	if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)

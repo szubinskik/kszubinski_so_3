@@ -1,5 +1,5 @@
 main: main.cpp imap.o requests.o debug.o
-	g++ main.cpp imap.o requests.o filetree.o debug.o -o ../bin/main `pkg-config libcurl fuse --cflags --libs` -std=c++11 -Wall -Wextra -Wconversion
+	g++ main.cpp imap.o requests.o debug.o -o ../bin/main `pkg-config libcurl fuse --cflags --libs` -std=c++11 -Wall -Wextra -Wconversion
 
 imap.o: imap.cpp imap.h
 	g++ -c imap.cpp -lcurl -std=c++11 -Wall -Wextra -Wconversion
