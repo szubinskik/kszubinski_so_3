@@ -22,4 +22,5 @@ Wreszcie, lista funkcjonalności systemu plików (w kolejności od najbardziej p
   3. Tworzenie, kopiowanie i usuwanie katalogów;
   4. Usuwanie maili;
   5. Przenoszenie maili;
+  
 Program do działania wymaga dodakowo biblioteki Boost i OpenSSL.
