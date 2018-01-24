@@ -10,5 +10,9 @@ requests.o: requests.cpp imap.h
 debug.o: debug.cpp debug.h
 	g++ -c debug.cpp -std=c++11 -Wall -Wextra -Wconversion
 
+ARGS = --help
+run:
+	../bin/main ${ARGS}
+
 clean:
 	rm *.o
