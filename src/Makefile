@@ -1,4 +1,5 @@
 main: main.cpp imap.o requests.o debug.o
+	mkdir -p ../bin
 	g++ main.cpp imap.o requests.o debug.o -o ../bin/main `pkg-config libcurl fuse --cflags --libs` -std=c++11 -Wall -Wextra -Wconversion
 
 imap.o: imap.cpp imap.h
