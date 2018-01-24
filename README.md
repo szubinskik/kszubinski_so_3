@@ -15,3 +15,11 @@ Wreszcie, lista funkcjonalności systemu plików (w kolejności od najbardziej p
   4. Usuwanie maili (jest to nieco bardziej złożone ze względu na specyfikację protokołu IMAP, ale można zdefiniować porządne zachowanie);
   5. Przenoszenie i kopiowanie maili. Zwróćmy uwagę, że nie ma operacji tworzenia maili - jej ew. implementacja (i co by to miało znaczyć) jest do rozstrzygnięcia;
   6. Dane o mailu - to co byśmy chcieli znać wywołując `stat`, np. datę modyfikacji, autor (mógłby być adres mailowy).
+
+### Zaimplementowana funkcjonalność  
+  1. Wypisywanie zawartości katalogów (z standardową ścieżką);
+  2. Odczytywanie podanych maili;
+  3. Tworzenie, kopiowanie i usuwanie katalogów;
+  4. Usuwanie maili;
+  5. Przenoszenie maili;
+Program do działania wymaga dodakowo biblioteki Boost i OpenSSL.
