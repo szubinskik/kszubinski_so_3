@@ -37,6 +37,47 @@ size_t handler_string(char *ptr, size_t size, size_t nmemb, void *result)
 
 // commands implemenatation
 
+int imap_unlink(std::string dir, int uid, imap_handler handler, void* pointer)
+{
+	CURL *curl = open_curl();
+	if (dir[0] == '/')
+		dir.erase(0, 1);
+
+	std::string command;
+	int status;
+
+	if (handler)
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, handler);
+
+	if (pointer)
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, pointer);
+
+	command = "SELECT \"" + dir + "\"";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+	if (status != 0)
+	{
+		close_curl(curl);
+		return status;
+	}
+
+	command = "STORE " + std::to_string(uid) + " FLAGS \\Deleted";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+	if (status != 0)
+	{
+		close_curl(curl);
+		return status;
+	}
+
+	command = "EXPUNGE";
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, command.c_str());
+	status = _make_request(curl);
+
+	close_curl(curl);
+	return status;
+}
+
 int imap_search_all(std::string path, imap_handler handler, void* pointer)
 {
 	CURL *curl = open_curl();

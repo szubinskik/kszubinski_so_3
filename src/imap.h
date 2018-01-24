@@ -25,6 +25,7 @@ int imap_search_all(std::string path, imap_handler handler = nullptr, void* poin
 int imap_select(std::string path, imap_handler handler = nullptr, void* pointer = nullptr);
 int imap_list_all(imap_handler handler = nullptr, void *pointer = nullptr);
 int imap_list_subdirs(std::string dir, imap_handler handler = nullptr, void *pointer = nullptr);
+int imap_unlink(std::string dir, int uid, imap_handler handler = nullptr, void* pointer = nullptr);
 
 // open/close session
 void close_curl(CURL *curl);

@@ -178,6 +178,32 @@ int parse_get_size(std::vector<std::string> v)
 
 // FUSE handlers implementation
 
+int do_unlink(const char* path)
+{
+	auto s_path = std::string(path);
+	TRACE("do_unlink(): " + s_path);
+
+	File f = get_file(s_path);
+	if (!is_file(f))
+		return -ENOENT;
+
+	int uid;
+	try { uid = std::stoi(f.second); } catch (const std::exception& e) { return -ENOENT; }
+
+	// convert UID to ms
+	std::vector<std::string> v;
+	imap_uid_to_ms(f.first, uid, handler_string_vector, &v);
+
+	auto s_all = parse_search_all(v);
+	if (s_all.empty())
+	{
+		return -EIO;
+	}
+	int ms = s_all.back();
+
+	return imap_unlink(f.first, ms);
+}
+
 int do_open(const char* path, struct fuse_file_info* fi)
 {
 	auto s_path = std::string(path);
@@ -265,7 +291,7 @@ int do_rename(const char* from, const char* to)
 	return -ENOENT;
 }
 
-int do_getattr( const char *path, struct stat *st )
+int do_getattr(const char *path, struct stat *st)
 {
 	TRACE("do_getattr(): "+std::string(path));
 
@@ -377,6 +403,7 @@ int run_fuse(int argc, char* argv[])
 	operations.rename  = do_rename;
 	operations.open    = do_open;
 	operations.read    = do_read;
+	operations.unlink  = do_unlink;
 	return fuse_main( argc, argv, &operations, NULL );
 }
 
